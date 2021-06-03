@@ -22,4 +22,4 @@ from S2S.local_configuration import config
 #observations	= ERA5().load(var,clim_t_start,clim_t_end,domainID)[var]
 #hindcast	= ECMWF_S2SH().load(var,t_start,t_end,domainID)[var]
 
-open_data = xr.open_dataset(/nird/projects/NS9853K/DATA/S2S/hindcast/ECMWF/sfc/u10/u10_CY46R1_2020-06-25_cf.grb,engine='cfgrib')
+open_data = xr.open_dataset('/nird/projects/NS9853K/DATA/S2S/hindcast/ECMWF/sfc/u10/u10_CY46R1_2020-06-25_cf.grb', engine='cfgrib')
