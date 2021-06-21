@@ -51,7 +51,7 @@ if standard_bias_correction==True:
 	hindcast_sbc = hindcast_anomaly*observation_std+observation_mean # sbc = standard_bias_correction
 	observation_sbc = observation_anomaly*observation_std+observation_mean
 
- crps.skill_agg(
+crps.skill_agg(
 	observation,
 	hindcast_sbc,
  	observation_mean,
