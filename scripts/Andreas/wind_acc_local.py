@@ -15,11 +15,18 @@ end_slice='2019-01-01'
 season_cutoff=False
 Season='DJF'
 standard_bias_correction=False
+nird=True
 
-xd1 = xr.open_dataset('/lustre/storeB/project/fou/om/Sesongvind/Data/S2S/absolute_wind_anomalies_hindcast.nc')
-xd1_mean = xr.open_dataset('/lustre/storeB/project/fou/om/Sesongvind/Data/S2S/absolute_wind_era_mean.nc')
-xd1_std = xr.open_dataset('/lustre/storeB/project/fou/om/Sesongvind/Data/S2S/absolute_wind_era_std.nc')
-xd2 = xr.open_dataset('/lustre/storeB/project/fou/om/Sesongvind/Data/S2S/absolute_wind_anomalies_era.nc')
+if nird==False:
+	xd1 = xr.open_dataset('/lustre/storeB/project/fou/om/Sesongvind/Data/S2S/absolute_wind_anomalies_hindcast.nc')
+	xd1_mean = xr.open_dataset('/lustre/storeB/project/fou/om/Sesongvind/Data/S2S/absolute_wind_era_mean.nc')
+	xd1_std = xr.open_dataset('/lustre/storeB/project/fou/om/Sesongvind/Data/S2S/absolute_wind_era_std.nc')
+	xd2 = xr.open_dataset('/lustre/storeB/project/fou/om/Sesongvind/Data/S2S/absolute_wind_anomalies_era.nc')
+elif nird==True:
+	xd1 = xr.open_dataset('/nird/projects/NS9853K/DATA/processed/wind_S2S/wind10m/absolute_wind_anomalies_hindcast.nc')
+	xd1_mean = xr.open_dataset('/nird/projects/NS9853K/DATA/processed/wind_S2S/wind10m/absolute_wind_era_mean.nc')
+	xd1_std = xr.open_dataset('/nird/projects/NS9853K/DATA/processed/wind_S2S/wind10m/absolute_wind_era_std.nc')
+	xd2 = xr.open_dataset('/nird/projects/NS9853K/DATA/processed/wind_S2S/wind10m/absolute_wind_anomalies_era.nc')
 
 
 hindcast_anomaly = xd1.abs_wind
@@ -86,6 +93,6 @@ plt.title('S2S extended range forecast at Lat=%.2f Lon=%.2f Lead time: %.2f days
 #plt.title('%s climatological anomaly at Lat=%.2f, Lon=%.2f' %(vname, Slat[iy], Slon[ix]))
 plt.legend()
 #fig.savefig('%s at Lon=%.2f, Lat=%.2f.png' %(vname, Slon[ix], Slat[iy]))
-plt.savefig('/lustre/storeB/project/fou/om/Sesongvind/Figurer/S2S/Tidsserie_S2S_anomaly_ACC_Lat_%.2f_Lon_%.0f_leadtime_%.2f_days.png' %(latitude,longitude,lead_time))
+#plt.savefig('/lustre/storeB/project/fou/om/Sesongvind/Figurer/S2S/Tidsserie_S2S_anomaly_ACC_Lat_%.2f_Lon_%.0f_leadtime_%.2f_days.png' %(latitude,longitude,lead_time))
 plt.show()
 #plt.savefig('Tidsserie.pdf'y
