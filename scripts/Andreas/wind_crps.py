@@ -52,12 +52,12 @@ if standard_bias_correction==True:
 	observation_sbc = observation_anomaly*observation_std+observation_mean
 
  crps.skill_agg(
- 	observation,
-	 hindcast_sbc,
+	observation,
+	hindcast_sbc,
  	observation_mean,
  	observation_std,
  	title='ERA Simple Bias Adjustment',
  	filename='crps_ERA_sb',
  	dim='validation_time.month'
- 	) 
+	) 
 
