@@ -1,30 +1,36 @@
 #!/usr/bin/env python
-from ecmwfapi import ECMWFDataServer
+from ecmwfapi import *
 import os,sys
 import pandas as pd
 from datetime import datetime
+import S2S.date_to_model  as d2m
 
-server = ECMWFDataServer()
+
+server = ECMWFService("mars")
 
 product = 'hindcast' # forecast, hincast
-dirbase = 'local_path'
+dirbase = '/nird/projects/nird/NS9853K/DATA/S2S/MARS'
 dir = '%s/%s/%s/'%(dirbase,product,'/ECMWF/sfc')
 
-forcastcycle = 'CY46R1'
+
+
 
 if product == 'hindcast':
-    STREAM =  'enfh',
+    STREAM =  'enfh' 
 if product == 'forecast':
-    STREAM = 'enfo',
+    STREAM = 'enfo' 
+  
+
+
 
 basedict = {
-    'class': 's2',
-    'dataset': 's2s',
-    'expver': 'prod',
-    'model': 'glob',
-    'origin': 'ecmf',
+    'class': 'od',
+    'expver': '1',
     'stream': STREAM ,
-    'time': '00:00:00'
+    'time': '00:00:00',
+    'grid': '0.5/0.5',
+    'area': '89/-45/20/50'
+    
 }
 
 l = range(0,1128,24)
@@ -33,55 +39,58 @@ final = '/'.join(paired[0:-1])
 
 meta = {
     'tp': {
-        'param': '228228',
+        'param': '228228',  
         'levtype': 'sfc',
-        #'step': '/'.join(['%i'%i for i in range(0,1128,24)])
+        #'step': '/'.join(['%i'%i for i in range(0,1128,24)]) 
         'step': '0/to/1104/by/24'
     },
-
+    
      't2m': {
-        'param': '167',
+        'param': '167',  
         'levtype': 'sfc',
-        'step': '/'.join([final])
+        'step': '/'.join([final]) 
     },
-
+    
      'sst': {
-        'param': '34',
+        'param': '34.128',  
         'levtype': 'sfc',
-        'step': '/'.join([final])
+        'step': '0/to/1104/by/24'
+       # 'step': '/'.join([final]) 
     },
-
+    
      'u10': {
-        'param': '165',
+        'param': '165',  
         'levtype': 'sfc',
         'step': '0/to/1104/by/24'
     },
-
+    
     'v10': {
-        'param': '166',
+        'param': '166',  
         'levtype': 'sfc',
         'step': '0/to/1104/by/24'
     },
-
+  
     'mslp': {
-        'param': '151',
+        'param': '151',  
         'levtype': 'sfc',
         'step': '0/to/1104/by/24'
+    },
+     
+    'sal': {
+        'param': '151175',  
+        'levtype': 'o2d',
+        'step': '/'.join([final]) 
     }
 }
 
-dates_monday = pd.date_range("20190701", periods=52, freq="7D") # forecasts start Monday
-dates_thursday = pd.date_range("20190704", periods=52, freq="7D") # forecasts start Thursday
-dates_fcycle = dates_monday.union(dates_thursday)
-
+dates_monday = pd.date_range("20200123", periods=52, freq="7D") # forecasts start Thursday
+dates_thursday = pd.date_range("20200127", periods=52, freq="7D") # forecasts start Monday
+dates_fcycle = dates_monday.union(dates_thursday) 
+    
    # Program start
 for filename in (
-   # 'tp',
-   # 't2m',
     'sst',
-   # 'mslp',
-   # 'u10',
-   # 'v10',
+    
 ):
     for prefix in (
         'pf',
@@ -94,7 +103,8 @@ for filename in (
             if not os.path.exists(datadir)  :
                 os.makedirs(datadir)
             hdate = '/'.join([d.replace('%i'%refyear,'%i'%i) for i in range(refyear-20,refyear)])
-            target = '%s/%s_%s_%s_%s_%s.grb'%(datadir,filename,forcastcycle,d,prefix,product)
+            forcastcycle = d2m.which_mv_for_init(d,model='ECMWF',fmt='%Y-%m-%d')
+            target = '%s/%s_%s_%s_%s_%s_%s.grb'%(datadir,filename,forcastcycle,'05x05',d,prefix,product)
             if not os.path.isfile(target):
                dic = basedict.copy()
                for k,v in meta[filename].items():
@@ -108,9 +118,11 @@ for filename in (
                if ( product == 'forecast' ):
                    if prefix == 'pf':
                        dic['number'] =  '1/to/50'
-               dic['target'] = target
-               print(dic)
+              # out = '%s,%s=%s'%(dic, '"target"',target)
+              # out= '%s=%s'%('target', target) 
+               out= '%s%s%s'%('"', target,'"')
+               print(out)
                if server is not None:
-                   server.retrieve(dic)
-
+                   server.execute(dic,target)
+                    
 print('DONE')

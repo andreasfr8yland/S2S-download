@@ -15,7 +15,20 @@ from . import latex
 
 def quick_map(da,point=None):
 
-    p = da.isel(member=0,time=0,step=0).transpose('lat','lon').plot(
+    try:
+        da = da.isel(member=0)
+    except ValueError:
+        pass
+    try:
+        da = da.isel(time=0)
+    except ValueError:
+        pass
+    try:
+        da = da.isel(step=0)
+    except ValueError:
+        pass
+
+    p = da.transpose('lat','lon').plot(
             subplot_kws=dict(projection=ccrs.PlateCarree(),
             facecolor="white"),
             transform=ccrs.PlateCarree(),
@@ -129,67 +142,81 @@ def qq_plot(dax_in,day_in,dim='validation_time.month',
                         filename='',
                         title=''):
 
-    for loc in dax_in.location:
+    # if location dimension does not exist, assign it
+    if np.isin(np.array(dax_in.dims),'location').sum() == 0:
+        dax_in = dax_in.expand_dims('location')
+        day_in = day_in.expand_dims('location')
 
-        dax = dax_in.sel(location=loc)
-        day = day_in.sel(location=loc)
+    if dax_in.location.values.ndim==0:
+        locations = [dax_in.location]
 
-        dax,day  = xr.broadcast(dax,day)
+    else:
+        locations = dax_in.location
 
-        if dim=='validation_time.month':
-            dax = xh.assign_validation_time(dax)
-            day = xh.assign_validation_time(day)
+    for loc in locations:
+        for lt in dax_in.step:
 
-        fname    = 'qqplot_'+filename+'_'+name_from_loc(str(dax.location.values))
-        suptitle = title + ' ' + \
-                        name_from_loc(str(dax.location.values)) #+\
-                        # ' leadtime: ' + '-'.join([
-                        #         str(pd.Timedelta(dax.step.min().to_pandas()).days),
-                        #         str(pd.Timedelta(dax.step.max().to_pandas()).days)
-                        #     ]) + ' days'
-        ###########################
-        #### Initialize figure ####
-        ###########################
-        latex.set_style(style='white')
-        subplots = fg(dax,dim)
-        fig,axes = plt.subplots(subplots[0],subplots[1],
-                        figsize=latex.set_size(width='thesis',
-                            subplots=(subplots[0],subplots[1]))
-                        )
-        axes = axes.flatten()
-        ###########################
+            dax = dax_in.sel(location=loc,step=lt)
+            day = day_in.sel(location=loc,step=lt)
 
-        x_group = list(dax.groupby(dim))
-        y_group = list(day.groupby(dim))
+            dax,day  = xr.broadcast(dax,day)
 
-        for n,(xlabel,xdata) in enumerate(x_group):
+            if dim=='validation_time.month':
+                dax = xh.assign_validation_time(dax)
+                day = xh.assign_validation_time(day)
 
-            ylabel,ydata = y_group[n]
-            # this approach is not bulletproof
-            # check manually that right groups go together
-            print('\tgraphics.qq_plot: matched groups ',xlabel,ylabel)
+            fname    = 'qqplot_'+filename+'_'+name_from_loc(str(dax.location.values))+str(lt.dt.days.values)
+            suptitle = title + ' ' + \
+                            name_from_loc(str(dax.location.values)) +' lead time: '+str(lt.dt.days.values)#+\
+                            # ' leadtime: ' + '-'.join([
+                            #         str(pd.Timedelta(dax.step.min().to_pandas()).days),
+                            #         str(pd.Timedelta(dax.step.max().to_pandas()).days)
+                            #     ]) + ' days'
+            ###########################
+            #### Initialize figure ####
+            ###########################
+            latex.set_style(style='white')
+            subplots = fg(dax,dim)
+            fig,axes = plt.subplots(subplots[0],subplots[1],
+                            figsize=latex.set_size(width='thesis',
+                                subplots=(subplots[0],subplots[1]))
+                            )
+            axes = axes.flatten()
+            ###########################
 
-            x,y = xr.align(xdata,ydata)
-            x,y = x.values.flatten(),y.values.flatten()
-            all = np.array([x,y]).flatten()
+            limits = [-5,5]
 
-            ax = axes[n]
+            x_group = list(dax.groupby(dim))
+            y_group = list(day.groupby(dim))
 
-            ax.set_title(month(xlabel))
+            for n,(xlabel,xdata) in enumerate(x_group):
 
-            ax.set_xlabel(x_axlabel)
-            ax.set_ylabel(y_axlabel)
+                ylabel,ydata = y_group[n]
+                # this approach is not bulletproof
+                # check manually that right groups go together
+                print('\tgraphics.qq_plot: matched groups ',xlabel,ylabel)
 
-            limits = [np.nanmin(all)-1,np.nanmax(all)+1]
-            ax.set_aspect('equal')
-            ax.set_xlim(limits)
-            ax.set_ylim(limits)
-            ax.plot([0, 1], [0, 1],'k',transform=ax.transAxes,alpha=0.7,linewidth=0.6)
+                x,y = xr.align(xdata,ydata)
+                x,y = x.values.flatten(),y.values.flatten()
+                all = np.array([x,y]).flatten()
 
-            ax.plot(x,y,'o',alpha=0.4,ms=1)
+                ax = axes[n]
 
-        fig.suptitle(suptitle)
-        save_fig(fig,fname)
+                ax.set_title(month(xlabel))
+
+                ax.set_xlabel(x_axlabel)
+                ax.set_ylabel(y_axlabel)
+
+                ax.set_aspect('equal')
+                ax.set_xlim(limits)
+                ax.set_ylim(limits)
+                ax.plot([limits[0], limits[1]], [limits[0], limits[1]],
+                                                'k',alpha=0.7,linewidth=0.6)
+
+                ax.plot(x,y,'o',alpha=0.4,ms=1)
+
+            fig.suptitle(suptitle)
+            save_fig(fig,fname)
 
 def skill_plot(in_mod,in_clim,dim='validation_time.month',
                                 filename='',
@@ -347,7 +374,13 @@ def timeseries(
             filename='',
             title=''
             ):
+    """
+    Plots timeseries of observations and forecast/hindcast
 
+    args:
+        cast list of xarray.DataArray
+    """
+    observations = xh.assign_validation_time(observations)
 
     if observations.location.values.ndim==0:
         locations = [observations.location]
@@ -402,6 +435,8 @@ def timeseries(
             subtitle = '    MAE:'
             for cn,c in enumerate(cast):
 
+                c = xh.assign_validation_time(c)
+
                 try:
                     c = c\
                             .sel(step=pd.Timedelta(lt,'D'),location=loc)\
@@ -443,6 +478,12 @@ def timeseries(
                             label=clabs[cn],
                             linewidth=0.5,
                             zorder=30
+                        )
+
+                    ax.fill_between(
+                            [],
+                            [],
+                            []
                         )
 
                     score = xs.mae(o,c,dim=[])\

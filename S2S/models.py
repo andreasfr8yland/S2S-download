@@ -10,7 +10,7 @@ import S2S.xarray_helpers as xh
 ############################# xarray routines ##################################
 ################################################################################
 
-def clim_fc(mean,std,r=1,number_of_members=11):
+def clim_fc(mean,std,r=1):
     """
     Combines mean and std along a member dimension
 
@@ -23,7 +23,7 @@ def clim_fc(mean,std,r=1,number_of_members=11):
     mean = mean.expand_dims('member')
     std  = std.expand_dims('member')
 
-    return xr.concat([mean-r*std,mean+r*std],'member')
+    return xr.concat([mean-r*std,mean+r*std],pd.Index([1,2],name='member'))
 
 def deterministic_gaussian_forecast(mean,std):
     """
@@ -50,10 +50,11 @@ def bias_adjustment_torralba(
                                 observations,
                                 clim_std=None,
                                 window=30,
-                                spread_only=False
+                                spread_only=False,
+                                cluster_name=None
                             ):
     """
-    Forecsat calibration as of Eq. 2-4 in Torralba et al. (2017).
+    Forecast calibration as of Eq. 2-4 in Torralba et al. (2017).
 
     References:
 
@@ -64,6 +65,11 @@ def bias_adjustment_torralba(
     Retrieved Jun 22, 2021, from
     https://journals.ametsoc.org/view/journals/apme/56/5/jamc-d-16-0204.1.xml
     """
+
+    if cluster_name:
+        icd = [cluster_name,'year','dayofyear']
+    else:
+        icd = ['year','dayofyear']
 
     x = forecast.mean('member')
     z = forecast - x
@@ -83,8 +89,8 @@ def bias_adjustment_torralba(
     rho = xr.apply_ufunc(
                 correlation_CV,ds.fc.mean('member'),ds.obs,ds.dayofyear,window,
                 input_core_dims  = [
-                                    ['year','dayofyear'],
-                                    ['year','dayofyear'],
+                                    icd,
+                                    icd,
                                     ['dayofyear'],
                                     []
                                 ],
@@ -97,11 +103,11 @@ def bias_adjustment_torralba(
     sigma_ens = xr.apply_ufunc(
                 std,ds.fc.mean('member'),ds.dayofyear,window,
                 input_core_dims  = [
-                                    ['year','dayofyear'],
+                                    icd,
                                     ['dayofyear'],
                                     []
                                 ],
-                output_core_dims = [['year','dayofyear']],
+                output_core_dims = [icd],
                 vectorize=True
     )
     sigma_ens = xh.stack_time(sigma_ens)
@@ -152,15 +158,28 @@ def persistence(init_value,observations,window=30):
 
     try:
         rho = rho.drop('validation_time')
-    except AttributeError:
+    except (AttributeError, ValueError):
         pass
 
     return rho * init_value
 
-def combo(init_value,model,observations,window=30,lim=1,sub=np.nan):
+def combo(
+            init_value,
+            model,
+            observations,
+            window=30,
+            lim=1,
+            sub=np.nan,
+            cluster_name=None
+        ):
     """
-    Input must be anomlies.
+    Input must be anomalies.
     """
+
+    if cluster_name:
+        icd = [cluster_name,'year','dayofyear']
+    else:
+        icd = ['year','dayofyear']
 
     print('\t performing models.persistence()')
     ds = xr.merge(
@@ -183,9 +202,9 @@ def combo(init_value,model,observations,window=30,lim=1,sub=np.nan):
                 lim,
                 sub,
                 input_core_dims  = [
-                                    ['year','dayofyear'],
-                                    ['year','dayofyear'],
-                                    ['year','dayofyear'],
+                                    icd,
+                                    icd,
+                                    icd,
                                     ['dayofyear'],
                                     [],
                                     [],
@@ -197,11 +216,11 @@ def combo(init_value,model,observations,window=30,lim=1,sub=np.nan):
 
     try:
         alpha = alpha.drop('validation_time')
-    except AttributeError:
+    except (AttributeError, ValueError):
         pass
     try:
         beta = beta.drop('validation_time')
-    except AttributeError:
+    except (AttributeError, ValueError):
         pass
 
     alpha = xh.stack_time(alpha)
@@ -233,13 +252,20 @@ def correlation_CV(x,y,index,window=30):
 
         year            -2
         dayofyear       -1
+
+    Returns 2 dimensional array (year,dayofyear)
     """
     rho   = []
 
     pad   = window//2
 
-    x     = np.pad(x,pad,mode='wrap')[pad:-pad,:]
-    y     = np.pad(y,pad,mode='wrap')[pad:-pad,:]
+    if len(x.shape)==2:
+        x     = np.pad(x,pad,mode='wrap')[pad:-pad,:]
+        y     = np.pad(y,pad,mode='wrap')[pad:-pad,:]
+
+    if len(x.shape)==3:
+        x     = np.pad(x,pad,mode='wrap')[pad:-pad,pad:-pad,:]
+        y     = np.pad(y,pad,mode='wrap')[pad:-pad,pad:-pad,:]
 
     index = np.pad(index,pad,mode='wrap')
 
@@ -259,12 +285,15 @@ def correlation_CV(x,y,index,window=30):
             filtered_xpool = np.delete(xpool,yy,axis=-2).flatten()
             filtered_ypool = np.delete(ypool,yy,axis=-2).flatten()
 
-            idx_bool = ~np.logical_or(
-                                np.isnan(filtered_xpool),
-                                np.isnan(filtered_ypool)
+            idx_bool = np.logical_and(
+                                np.isfinite(filtered_xpool),
+                                np.isfinite(filtered_ypool)
                             )
+            if idx_bool.sum()<2:
+                r = np.nan
 
-            r,p = stats.pearsonr(
+            else:
+                r,p = stats.pearsonr(
                                     filtered_xpool[idx_bool],
                                     filtered_ypool[idx_bool]
                                 )
@@ -280,6 +309,20 @@ def std(x,index,window=30):
     Computes std of x, keeping dim -1 and -2.
     Dim -1 must be 'dayofyear', with the corresponding days given in index.
     Dim -2 must be 'year'.
+clim_fc = models.clim_fc(point_observations.mean,point_observations.std)
+pers    = models.persistence(
+                init_value   = point_observations.init_a,
+                observations = point_observations.data_a
+                )
+
+graphics.timeseries(
+                        observations    = point_observations.data_a,
+                        cast            = [pers,point_hindcast.data_a],
+                        lead_time       = [9,16],
+                        clabs           = ['persistence','EC'],
+                        filename        = 'BW_persistence',
+                        title           = 'Barentswatch EC'
+                    )
 
     args:
         x:      np.array of float, with day of year as index -1 and year as
@@ -296,12 +339,19 @@ def std(x,index,window=30):
 
         year            -2
         dayofyear       -1
+
+    Returns n dimensional array (...n-2,year,dayofyear) n is number of input dim
     """
     std   = []
 
     pad   = window//2
 
-    x     = np.pad(x,pad,mode='wrap')[pad:-pad,:]
+    if len(x.shape)==2:
+        x     = np.pad(x,pad,mode='wrap')[pad:-pad,:]
+
+    if len(x.shape)==3:
+        x     = np.pad(x,pad,mode='wrap')[pad:-pad,pad:-pad,:]
+
     index = np.pad(index,pad,mode='wrap')
 
     index[-pad:] += index[-pad-1]
@@ -337,14 +387,23 @@ def running_regression_CV(x,y,z,index,window=30,lim=1,sub=np.nan):
 
         year            -2
         dayofyear       -1
+
+    Returns 2 dimensional array (year,dayofyear)
     """
     slope_x,slope_y = [],[]
 
     pad   = window//2
 
-    x     = np.pad(x,pad,mode='wrap')[pad:-pad,:]
-    y     = np.pad(y,pad,mode='wrap')[pad:-pad,:]
-    z     = np.pad(z,pad,mode='wrap')[pad:-pad,:]
+    if len(x.shape)==2:
+        x     = np.pad(x,pad,mode='wrap')[pad:-pad,:]
+        y     = np.pad(y,pad,mode='wrap')[pad:-pad,:]
+        z     = np.pad(z,pad,mode='wrap')[pad:-pad,:]
+
+    if len(x.shape)==3:
+        x     = np.pad(x,pad,mode='wrap')[pad:-pad,pad:-pad,:]
+        y     = np.pad(y,pad,mode='wrap')[pad:-pad,pad:-pad,:]
+        z     = np.pad(z,pad,mode='wrap')[pad:-pad,pad:-pad,:]
+
 
     index = np.pad(index,pad,mode='wrap')
 
@@ -366,11 +425,11 @@ def running_regression_CV(x,y,z,index,window=30,lim=1,sub=np.nan):
             filtered_ypool = np.delete(ypool,yy,axis=-2).flatten()
             filtered_zpool = np.delete(zpool,yy,axis=-2).flatten()
 
-            idx_bool = ~np.logical_or(
-                                np.logical_or(
-                                                np.isnan(filtered_xpool),
-                                                np.isnan(filtered_ypool)
-                                            ),np.isnan(filtered_zpool)
+            idx_bool = np.logical_and(
+                                np.logical_and(
+                                                np.isfinite(filtered_xpool),
+                                                np.isfinite(filtered_ypool)
+                                              ),np.isfinite(filtered_zpool)
                             )
 
             if idx_bool.sum()<lim:
